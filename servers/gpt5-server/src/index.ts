@@ -23,7 +23,12 @@ const GPT5GenerateSchema = z.object({
   reasoning_effort: z.enum(['low', 'medium', 'high']).optional().describe("Reasoning effort level"),
   max_tokens: z.number().optional().describe("Maximum tokens to generate"),
   temperature: z.number().min(0).max(2).optional().describe("Temperature for randomness (0-2)"),
-  top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter")
+  top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter"),
+  background: z.boolean().optional().describe("Use background processing for long-running tasks (auto-enabled for high reasoning effort)"),
+  use_retry: z.boolean().optional().default(true).describe("Enable retry logic for socket errors"),
+  max_retries: z.number().optional().default(3).describe("Maximum number of retries"),
+  polling_interval: z.number().optional().default(5000).describe("Polling interval in ms for background responses"),
+  max_polling_time: z.number().optional().default(300000).describe("Maximum polling time in ms (default: 5 minutes)")
 });
 
 const GPT5MessagesSchema = z.object({
@@ -36,7 +41,12 @@ const GPT5MessagesSchema = z.object({
   reasoning_effort: z.enum(['low', 'medium', 'high']).optional().describe("Reasoning effort level"),
   max_tokens: z.number().optional().describe("Maximum tokens to generate"),
   temperature: z.number().min(0).max(2).optional().describe("Temperature for randomness (0-2)"),
-  top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter")
+  top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter"),
+  background: z.boolean().optional().describe("Use background processing for long-running tasks (auto-enabled for high reasoning effort)"),
+  use_retry: z.boolean().optional().default(true).describe("Enable retry logic for socket errors"),
+  max_retries: z.number().optional().default(3).describe("Maximum number of retries"),
+  polling_interval: z.number().optional().default(5000).describe("Polling interval in ms for background responses"),
+  max_polling_time: z.number().optional().default(300000).describe("Maximum polling time in ms (default: 5 minutes)")
 });
 
 // Type definitions
@@ -63,7 +73,7 @@ async function main() {
     "gpt5_generate",
     {
       title: "GPT-5 Generate",
-      description: "Generate text using OpenAI GPT-5 API with a simple input prompt",
+      description: "Generate text using OpenAI GPT-5 API with enhanced resilience for longer tasks",
       inputSchema: {
         input: z.string().describe("The input text or prompt for GPT-5"),
         model: z.string().optional().default("gpt-5").describe("GPT-5 model variant to use"),
@@ -71,11 +81,17 @@ async function main() {
         reasoning_effort: z.enum(['low', 'medium', 'high']).optional().describe("Reasoning effort level"),
         max_tokens: z.number().optional().describe("Maximum tokens to generate"),
         temperature: z.number().min(0).max(2).optional().describe("Temperature for randomness (0-2)"),
-        top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter")
+        top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter"),
+        background: z.boolean().optional().describe("Use background processing for long-running tasks (auto-enabled for high reasoning effort)"),
+        use_retry: z.boolean().optional().default(true).describe("Enable retry logic for socket errors"),
+        max_retries: z.number().optional().default(3).describe("Maximum number of retries"),
+        polling_interval: z.number().optional().default(5000).describe("Polling interval in ms for background responses"),
+        max_polling_time: z.number().optional().default(300000).describe("Maximum polling time in ms (default: 5 minutes)")
       }
     },
     async (args: GPT5GenerateArgs) => {
-      console.error(`GPT-5 Generate: "${args.input.substring(0, 100)}..."`);
+      const processingMode = args.background || args.reasoning_effort === 'high' ? 'background' : 'synchronous';
+      console.error(`GPT-5 Generate (${processingMode}): "${args.input.substring(0, 100)}..."`);
       
       try {
         const result = await callGPT5(process.env.OPENAI_API_KEY!, args.input, {
@@ -84,7 +100,12 @@ async function main() {
           reasoning_effort: args.reasoning_effort,
           max_tokens: args.max_tokens,
           temperature: args.temperature,
-          top_p: args.top_p
+          top_p: args.top_p,
+          background: args.background,
+          use_retry: args.use_retry,
+          max_retries: args.max_retries,
+          polling_interval: args.polling_interval,
+          max_polling_time: args.max_polling_time
         });
         
         let responseText = result.content;
@@ -117,7 +138,7 @@ async function main() {
     "gpt5_messages",
     {
       title: "GPT-5 Messages",
-      description: "Generate text using GPT-5 with structured conversation messages",
+      description: "Generate text using GPT-5 with structured conversation messages and enhanced resilience",
       inputSchema: {
         messages: z.array(z.object({
           role: z.enum(['user', 'developer', 'assistant']).describe("Message role"),
@@ -128,11 +149,17 @@ async function main() {
         reasoning_effort: z.enum(['low', 'medium', 'high']).optional().describe("Reasoning effort level"),
         max_tokens: z.number().optional().describe("Maximum tokens to generate"),
         temperature: z.number().min(0).max(2).optional().describe("Temperature for randomness (0-2)"),
-        top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter")
+        top_p: z.number().min(0).max(1).optional().describe("Top-p sampling parameter"),
+        background: z.boolean().optional().describe("Use background processing for long-running tasks (auto-enabled for high reasoning effort)"),
+        use_retry: z.boolean().optional().default(true).describe("Enable retry logic for socket errors"),
+        max_retries: z.number().optional().default(3).describe("Maximum number of retries"),
+        polling_interval: z.number().optional().default(5000).describe("Polling interval in ms for background responses"),
+        max_polling_time: z.number().optional().default(300000).describe("Maximum polling time in ms (default: 5 minutes)")
       }
     },
     async (args: GPT5MessagesArgs) => {
-      console.error(`GPT-5 Messages: ${args.messages.length} messages`);
+      const processingMode = args.background || args.reasoning_effort === 'high' ? 'background' : 'synchronous';
+      console.error(`GPT-5 Messages (${processingMode}): ${args.messages.length} messages`);
       
       try {
         const result = await callGPT5WithMessages(process.env.OPENAI_API_KEY!, args.messages, {
@@ -141,7 +168,12 @@ async function main() {
           reasoning_effort: args.reasoning_effort,
           max_tokens: args.max_tokens,
           temperature: args.temperature,
-          top_p: args.top_p
+          top_p: args.top_p,
+          background: args.background,
+          use_retry: args.use_retry,
+          max_retries: args.max_retries,
+          polling_interval: args.polling_interval,
+          max_polling_time: args.max_polling_time
         });
         
         let responseText = result.content;
